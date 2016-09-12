@@ -1,5 +1,12 @@
 #!/bin/bash
 now=$(date +%Y-%m-%d)
-fname=$1
-blurp=_
-echo $now$blurp$fname
+fullname=$1
+
+#filename without extension:
+namo=${fullname%.*}
+
+#extension without filename:
+extn=${fullname##*$namo}
+
+#string them together:
+echo $namo'_'$now$extn
