@@ -12,4 +12,4 @@ extn=${fullname##*$namo}
 touch $namo'_'$now$extn
 
 #and tell the world:
-echo $namo'_'$now$extn
+echo 'Created '$namo'_'$now$extn' in the current directory.'
