@@ -1,4 +1,4 @@
-## Scott Schumacer
+## Scott Schumacher
 Due: Oct 18th by classtime.
 
 For up to 15 points to be added to your exam, complete the following.
