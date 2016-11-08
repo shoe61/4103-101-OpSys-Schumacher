@@ -1,101 +1,25 @@
-import threading
-import os
-from os import system
-import curses
-import locale
-import time
-import threading
-import random
-import json
-import struct
+"""
+Scott Schumacher
+Program_2: dpa.py
+8 November 2016
 
-screenLock = threading.Lock()
+The Dining Philosophers Problem: Four threads (the philosophers) must share resources
+(the spaghetti). To do so, they must acquire locks (the forks). In so doing, they deny
+the other philosophers the opportunity to eat. One approach to the problem is ResourceWarning
+hierarchy solution, wherein each philosopher is required to acquire the forks in a fixed order,
+which helps prevent deadlock.
+
+This program implements a sort of arbitration; the philosophers maintain a record of their bites
+and the Fork Class, which previously had no decison-making code, now limits the number of times
+each philosopher may use a fork pair. Under true multi-threading, odd- and even- numbered 
+philosophers would be able to eat in turn... philosophers 2 and 4 would be able to eat, then
+philosophers 1 and 3, usv. But since Python only allows a single thread at a time to run, we see
+here that each philosopher is limited to 50 bites, and then passes the forks to the next philosopher.
+
+The order in which they eat is not fixed; it is random. But the imposition of even a little bit of
+order is enough to ensure equal distribution of the spaghetti.
 
 """
-Location object to help the Curses Window class
-"""
-class Cell(object):
-    def __init__(self,row=0,col=0):
-        self.row = row
-        self.col = col
-
-"""
-Curses Window wrapper to help with printing to the screen
-"""
-class CursesWindow(object):
-        
-    def __init__(self):
-        self.screen = curses.initscr()
-
-        self.maxy,self.maxx = self.screen.getmaxyx()
-        curses.start_color()
-        curses.use_default_colors()
-        curses.cbreak()
-        self.colors = self.loadColors()
-
-        for c in self.colors:
-            r,g,b = c['curses']
-            i = int(c['index'])
-            curses.init_color(i,r,g,b)
-            curses.init_pair(i,i,-1)
-
-        self.screen.border(0)    
-
-    """
-    Loads the possible colors from colors.csv
-    """
-    def loadColors(self):
-        f = open("colors.csv","r")
-
-        colors = []
-
-        for line in f:
-            temp = line.strip()
-            temp = temp.split(',')
-            rgb = struct.unpack('BBB',temp[2].strip('#').decode('hex'))
-            curses = (int(rgb[0]/255.0*1000.0),int(rgb[1]/255.0*1000.0),int(rgb[2]/255.0*1000.0))
-            colors.append({'index':temp[0],'name':temp[1].strip(),'hex':temp[2].strip(),'curses':curses,'rgb':rgb})
-
-        f.close()
-        
-        return colors
-    
-    def getColorNames(self):
-        names = []
-        for c in self.colors:
-            names.append(c['name'])
-        return names
-
-    
-    def cprint(self,row,col,string,color=0):
-        try: 
-
-            self.screen.addstr(row, col, string, curses.color_pair(color))
-            self.screen.addch(row, col-2, '#',curses.color_pair(color))      
-        except:
-            print("Unexpected error:", row, col, string, color)
-            
-            raise
-        self.screen.refresh()
-    
-    def randomColor(self):
-        """visibile colors"""
-        return random.randint(1,len(self.colors))
-        
-    def getColor(self,key,val):
-        
-        for c in self.colors:
-            if c[key] == val:
-                return c
-        
-        return None
-        
-    def exit(self):
-        self.screen.getch()
-        curses.endwin()
-        
-
-"""=========================================================="""
 
 # Layout of the table (P = philosopher, f = fork):
 #          P0
@@ -106,86 +30,103 @@ class CursesWindow(object):
 
 # Number of philosophers at the table. 
 # There'll be the same number of forks.
-numPhilosophers = 4
+"""================================================================================================"""
 
-# Lists to hold the philosophers and the forks.
-# Philosophers are threads while forks are locks.
+import time
+import threading
+import random
+import json
+import struct
+
+
 philosophers = []
 forks = []
-
 screenLock = threading.Lock()
+numPhilosophers = 4
+
+
 
 class Philosopher(threading.Thread):
-    def __init__(self, index,window,cell):
+    
+    def __init__(self, index):
         threading.Thread.__init__(self)
         self.index = index
-        self.window = window
-        self.cell = cell
-        self.color = self.window.randomColor()  # Color to draw with
-        
+        self.count = 0
+
+
+    """==============================================================================================
+     A Philosopher could eat forever, but has to reset his count after 50 bites; during the time it  
+     takes to reset self.count to zero, another thread jumps in. The regulation and distribution of 
+     resources is a cooperative one; the threads report to the ForkPair class's Pickup function how
+     many bites (locks) they have consumed, and the pickup function limits them to 50. In order to 
+     continue the thread has to reset its count to zero; a ten millisecond pause at that time ensures
+     that another thread has time to acquire the lock.
+     =============================================================================================="""
 
     def run(self):
         # Assign left and right fork
         leftForkIndex = self.index
         rightForkIndex = (self.index - 1) % numPhilosophers
         forkPair = ForkPair(leftForkIndex, rightForkIndex)
-        
-        # This prints out the threads name on the left of our "progress bar"
-        with screenLock:
-            self.window.cprint(self.cell.row, self.cell.col, str(self.index),self.color)
-        self.cell.col += 5
-
-        # Eat forever
         while True:
-            forkPair.pickUp()
-            with screenLock:
-                self.window.cprint(self.cell.row, self.cell.col, "#" ,self.color)
-                self.cell.col += 1
-                if self.cell.col >= self.window.maxx-2:
-                    self.cell.col = 10
-                    for i in range(10,self.window.maxx-2):
-                        self.window.cprint(self.cell.row, i, "#",16)
-                time.sleep(.05)
-            time.sleep(.01)
+            forkPair.pickUp(self.count)
+            self.count += 1
+            # in lieu of graphics, print a running score of who is eating and how much:
+            print('philosopher ', self.index, 'pickup; ', 'count: ', self.count)
             forkPair.putDown()
+            if self.count > 50:
+                self.count = 0
+                time.sleep(10)
+          
 
 class ForkPair:
+
     def __init__(self, leftForkIndex, rightForkIndex):
         # Order forks by index to prevent deadlock
         if leftForkIndex > rightForkIndex:
             leftForkIndex, rightForkIndex = rightForkIndex, leftForkIndex
         self.firstFork = forks[leftForkIndex]
         self.secondFork = forks[rightForkIndex]
+
+
+    """==============================================================================================
+    PickUp limits the number of times that a thread can control the lock. As long as  
+    a thread's count is less than fifty, it may continue. Pickup has been expanded to 
+    accept count, the thread's self.count, as an argument. In a very primitive way,
+    this arrangement resembles a monitor... one process is allowed in at time, and 
+    count is used as a condition variable.
+    ==============================================================================================="""
     
-
-    def pickUp(self):
-        # Acquire by starting with the lower index
-        self.firstFork.acquire()
-        self.secondFork.acquire()
-
+    def pickUp(self, count):
+        if count <= 50:
+            self.firstFork.acquire()
+            self.secondFork.acquire()
+               
     def putDown(self):
-        # The order does not matter here
-        self.firstFork.release()
-        self.secondFork.release()
+        if self.firstFork.locked() and self.secondFork.locked():
+            self.firstFork.release()
+            self.secondFork.release()
+            
+      
 
 if __name__ == "__main__":
 
-    screenLock = threading.Lock()
-    window = CursesWindow()
-    row = 5
-    
+    print('starting')
+
     # Create philosophers and forks
     for i in range(0, numPhilosophers):
-        philosophers.append(Philosopher(i,window,Cell(5+row,5)))
+        philosophers.append(Philosopher(i))
         forks.append(threading.Lock())
-        row += 1
+        
 
     # All philosophers start eating
     for philosopher in philosophers:
         philosopher.start()
 
+    """   
     # Allow CTRL + C to exit the program
     try:
         while True: time.sleep(.21)
     except (KeyboardInterrupt, SystemExit):
         os._exit(0)
+    """
